@@ -1,0 +1,38 @@
+[Unit]
+Description=GANDALF AI Agent Service (Multi-Model)
+After=network.target
+Documentation=file:///opt/apps/gandlf/multi-agent/README.md
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/apps/gandlf/multi-agent
+Environment="PATH=/opt/gandalf/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+EnvironmentFile=/etc/gandalf/ai-agent.env
+
+# Start the AI agent service with gunicorn
+ExecStart=/opt/gandalf/venv/bin/gunicorn \
+    --workers 2 \
+    --bind 0.0.0.0:8080 \
+    --timeout 120 \
+    --graceful-timeout 30 \
+    --access-logfile /var/log/gandalf/ai-agent-access.log \
+    --error-logfile /var/log/gandalf/ai-agent-error.log \
+    --log-level info \
+    ai_agent_service:app
+
+# Restart on failure
+Restart=on-failure
+RestartSec=5s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gandalf-ai-agent
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

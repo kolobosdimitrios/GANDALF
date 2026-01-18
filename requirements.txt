@@ -1,0 +1,26 @@
+# Database
+mysql-connector-python==8.3.0
+
+# API framework
+flask==3.0.2
+flask-cors==4.0.0
+gunicorn==21.2.0
+
+# Environment management
+python-dotenv==1.0.1
+
+# Data validation
+pydantic==2.6.1
+
+# HTTP client
+httpx==0.26.0
+requests==2.31.0
+
+# JSON
+orjson==3.9.15
+
+# Logging
+structlog==24.1.0
+
+# AI/LLM (for multi-agent system)
+anthropic==0.40.0
