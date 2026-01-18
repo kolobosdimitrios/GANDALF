@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/gandalf-logo.jpeg" alt="GANDALF Logo" width="400"/>
+</div>
+
 # GANDALF - Requirements Inference & Prompt Normalization System
 
 **G**enerative **A**gent for **N**ormalizing **D**irectives **A**nd **L**everaging **F**ormalization
