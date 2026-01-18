@@ -404,7 +404,16 @@ sudo cat /etc/gandalf/db.env
 
 ## License
 
-[Add license information]
+GANDALF is licensed under the Apache License 2.0.
+
+This includes:
+- Prompt definitions
+- Semantic / lexical pipelines
+- CTC schemas
+- Orchestration logic
+- Documentation
+
+Trademarks and branding are not included in the license.
 
 ## Authors
 
