@@ -1,357 +1,170 @@
-# GANDLF CTC Generation Implementation Summary
+# GANDLF Implementation Status Report
 
-**Ticket**: GANDLF-0004
-**Date**: 2026-01-19
-**Status**: ✅ COMPLETED
+**Ticket**: GANDLF-0007
+**Date**: 2026-01-24
+**Status**: ✅ CLEANED UP
 
 ## Overview
 
-Successfully implemented the complete CTC (Compiled Task Contract) generation logic for GANDALF following the specification in GANDALF.md, CompiledOutputSchema.md, and the demo/validation examples.
+Removed all local intent analysis modules (intent_analyzer, gap_detector, clarification_generator, ctc_generator) as these functions are now handled by the AI agent (workman) running in the GANDALF VM.
 
-## Implementation Architecture
+The application uses an **AI agent-centric architecture** where all CTC generation logic runs on the AI agent, not the application server.
 
-### Core Modules
+## Architecture
 
-#### 1. Intent Analyzer (`api/intent_analyzer.py`)
-**Purpose**: Analyzes and classifies user prompts
+### Current Design
 
-**Key Features**:
-- Intent type classification (SOFTWARE_FEATURE, BUG_REPORT, BUSINESS_NEED, NON_TECHNICAL)
-- Clarity assessment (CLEAR, VAGUE, INCOMPLETE)
-- Action verb extraction (handles multi-word verbs like "set up")
-- Target object identification
-- Complexity scoring (1-5 scale)
-- Confidence calculation (0.0-1.0)
+The GANDALF application follows a clean separation of concerns:
 
-**Special Handling**:
-- Infers "fix" action for bug reports without explicit verbs
-- Recognizes vague vs. clear action verbs
-- Detects scope, constraints, and success criteria
+1. **REST API Server** (`api/app.py`)
+   - Accepts user intents via `/api/intent` endpoint
+   - Delegates all processing to the AI agent
+   - Returns CTC results or clarification requests
+   - Tracks efficiency metrics
 
-#### 2. Gap Detector (`api/gap_detector.py`)
-**Purpose**: Identifies missing information in user intents
+2. **AI Agent Communication** (`gandalf_agent/`)
+   - `agent_client.py`: Client for communicating with the AI agent
+   - `ctc_orchestrator.py`: Orchestrates the workflow
+   - The actual agent runs in the GANDALF VM (workman)
 
-**Gap Types**:
-- `MISSING_SCOPE` - Unclear where to implement
-- `MISSING_PLATFORM` - Ambiguous environment/version
-- `MISSING_FORMAT` - File format not specified
-- `MISSING_TARGET` - Unclear target object
-- `MISSING_CRITERIA` - Success criteria missing
-- `VAGUE_ACTION` - Action verb too general
-- `MISSING_CONTEXT` - Required context not provided
-- `AMBIGUOUS_INTENT` - Overall intent unclear
+3. **Utilities**
+   - `api/efficiency_calculator.py`: Calculates compression efficiency metrics
+   - Independent of intent analysis logic
 
-**Gap Severity**:
-- `BLOCKING` - Must ask user before proceeding
-- `NON_BLOCKING` - Can proceed with reasonable defaults
+### Request Flow
 
-**Detection Logic**:
-- Type-specific gap detection (features, bugs, business needs)
-- Context-aware (e.g., doesn't ask for format when it's a bug about export)
-- Considers intermittent issues (e.g., "sometimes fails" → ask for platform)
-- Limits to max 3 blocking gaps per GANDALF rules
-
-#### 3. Clarification Generator (`api/clarification_generator.py`)
-**Purpose**: Generates structured clarification questions
-
-**Question Format**:
-```json
-{
-  "question": "Which format should be used?",
-  "options": {
-    "A": "CSV",
-    "B": "PDF",
-    "C": "XLSX"
-  },
-  "default_option": "A"
-}
+```
+User Intent
+    ↓
+Flask API: /api/intent
+    ↓
+CTCOrchestrator
+    ↓
+AgentClient.analyze_intent()    → AI Agent
+AgentClient.detect_gaps()       → AI Agent
+AgentClient.generate_ctc()      → AI Agent
+    ↓
+CTC Result / Clarification Questions
+    ↓
+Response with Telemetry & Efficiency Metrics
 ```
 
-**Features**:
-- Max 3 questions per request
-- Context-aware question generation
-- Sensible default options
-- Handles format, platform, scope, action, and context gaps
+## Removed Components
 
-#### 4. CTC Generator (`api/ctc_generator.py`)
-**Purpose**: Main orchestration engine for CTC generation
+### Files Deleted
 
-**CTC Structure** (per GANDALF specification):
-```markdown
-# Task: {Clear verb + concrete object}
+From both `/var/www/projects/gandlf/api/` and `/opt/apps/gandlf/api/`:
 
-## Context
-- {What exists or triggered the task}
-- {Optional second context item}
+1. **intent_analyzer.py** (321 lines)
+   - Intent classification and analysis
+   - Clarity assessment
+   - Action verb extraction
+   - Now handled by: `AgentClient.analyze_intent()`
 
-## Definition of Done
-- [ ] {Observable, verifiable outcome}
-- [ ] {Observable, verifiable outcome}
-- [ ] {Observable, verifiable outcome}
+2. **gap_detector.py** (293 lines)
+   - Gap detection and classification
+   - Blocking vs non-blocking gaps
+   - Now handled by: `AgentClient.detect_gaps()`
 
-## Constraints
-- {Task-specific hard limits only}
+3. **clarification_generator.py** (291 lines)
+   - Clarification question generation
+   - Question formatting
+   - Now handled by: AI Agent (as part of gap detection)
 
-## Deliverables
-- {Concrete artifacts}
-```
+4. **ctc_generator.py** (495 lines)
+   - CTC generation orchestration
+   - Title, context, DoD generation
+   - Now handled by: `AgentClient.generate_ctc()`
 
-**Generation Rules Implemented**:
-- **Title**: Clear verb + concrete object, no vague verbs
-- **Context**: Max 2 bullets, delta-only, no background stories
-- **Definition of Done**: 3-7 checkboxes, objectively verifiable
-- **Constraints**: Max 5, task-specific only
-- **Deliverables**: Max 5, artifacts only, no descriptions
+### Updates
 
-**Process Flow**:
-1. Analyze intent → Intent Analysis
-2. Detect gaps → Gap Analysis
-3. If blocking gaps → Generate clarifications
-4. If no blocking gaps → Generate CTC
+- **api/__init__.py**: Removed exports of deleted modules
+  - Kept: `app`, `EfficiencyCalculator`
+  - Removed: `CTCGenerator`, `IntentAnalyzer`, `GapDetector`, `ClarificationGenerator`
 
-#### 5. Efficiency Calculator (`api/efficiency_calculator.py`)
-**Purpose**: Calculates conversion efficiency metrics
+## Remaining Components
 
-**Metrics**:
-- Character-based efficiency: `100 * (1 - (CTC_chars / user_chars))`
-- Optional token-based efficiency
-- Compression ratio
-- User input vs CTC output character counts
+### api/efficiency_calculator.py
+Calculates conversion efficiency metrics based on character count:
+- Formula: `100 * (1 - (CTC_chars / user_chars))`
+- Compression ratio tracking
+- Metadata about input/output sizes
 
-**Note**: Per GANDALF spec, efficiency is independent of execution success/failure.
+This component remains as it's independent of intent analysis and useful for performance metrics.
 
-## Integration with Flask API
+### api/app.py
+Flask REST API that:
+- Accepts user intents via `/api/intent` endpoint
+- Delegates processing to `CTCOrchestrator`
+- Calculates efficiency metrics
+- Returns responses in GANDALF format
 
-### Updated Endpoints
+### gandalf_agent/
+Contains the AI agent client interface:
+- `agent_client.py`: HTTP client for communicating with AI agent
+- `ctc_orchestrator.py`: Orchestrates the workflow
 
-#### POST `/api/intent`
-**Enhanced with**:
-- CTCGenerator integration
-- Real-time efficiency calculation
-- Elapsed time tracking
-- Telemetry with efficiency metrics
+## Why This Architecture?
 
-**Response Types**:
-1. **CTC Response** (when no clarification needed):
-```json
-{
-  "gandalf_version": "1.0",
-  "ctc": {
-    "title": "...",
-    "context": [...],
-    "definition_of_done": [...],
-    "constraints": [...],
-    "deliverables": [...]
-  },
-  "clarifications": {
-    "asked": [],
-    "resolved_by": "default"
-  },
-  "telemetry": {
-    "intent_id": "uuid",
-    "created_at": "ISO-8601",
-    "executor": {...},
-    "elapsed_ms": 0,
-    "efficiency": {
-      "efficiency_percentage": 0.0,
-      "user_chars": 0,
-      "ctc_chars": 0,
-      "compression_ratio": 0.0
-    }
-  }
-}
-```
+**Rationale for moving to AI agent-centric design:**
 
-2. **Clarification Response** (when blocking gaps exist):
-```json
-{
-  "gandalf_version": "1.0",
-  "requires_clarification": true,
-  "clarifications": {
-    "asked": [
-      {
-        "question": "...",
-        "options": ["A: ...", "B: ...", "C: ..."],
-        "default_option": "A"
-      }
-    ],
-    "resolved_by": null
-  },
-  "telemetry": {...}
-}
-```
+1. **Centralization**: All CTC generation logic in one place (the AI agent)
+2. **Flexibility**: AI agent can be updated without redeploying the app
+3. **Reusability**: AI agent logic can be used by multiple applications
+4. **Separation of Concerns**: App focuses on API, agent focuses on logic
+5. **Consistency**: Single source of truth for intent analysis rules
 
-## Testing
+**Benefits achieved:**
+- Cleaner codebase (removed 1,400+ lines of local logic)
+- Easier to maintain (no duplicate logic)
+- Better scalability (AI agent can be optimized independently)
+- More flexible deployments (app and agent can evolve separately)
 
-### Test Suite (`scripts/test_ctc_generation.py`)
+## Project Structure Summary
 
-**Demo Examples** (from Gandalf_Demo_Intents_and_Outputs.md):
-1. ✅ FAQ Section - Generated CTC
-2. ✅ Export Report - Identified need for format clarification
-3. ✅ Make App Faster - Identified need for area clarification
-4. ✅ Onboarding Emails - Generated CTC
-5. ✅ API Error Alert - Generated CTC
+### Web Projects (`/var/www/projects/gandlf`)
+- **api/**: Flask API endpoints and utilities
+  - `app.py`: REST API implementation
+  - `efficiency_calculator.py`: Efficiency metrics
+  - `__init__.py`: Package exports
+- **gandalf_agent/**: AI agent communication
+  - `agent_client.py`: Agent client interface
+  - `ctc_orchestrator.py`: Workflow orchestration
+- **multi-agent/**: Multi-agent pipeline (archived)
+- **Documentation**: Project specifications and guides
 
-**Validation Examples** (from Gandalf_Validation_Intents_and_Outputs.md):
-1. ✅ Dark Mode Toggle - Generated CTC
-2. ✅ User Retention - Identified need for metric clarification
-3. ✅ Checkout iOS Bug - Identified need for version clarification
-4. ✅ Password Reset Bug - Generated CTC
-5. ✅ Date Range Filter - Generated CTC
-6. ✅ Export Button Bug - Generated CTC
+### App Projects (`/opt/apps/gandlf`)
+- Mirrors the web project structure
+- Deployment copy for production use
 
-**Results**: 11/11 tests passing (100%)
+## Verification Checklist
 
-### Test Execution
-```bash
-python3 scripts/test_ctc_generation.py
-```
+✅ Removed intent_analyzer.py from both locations
+✅ Removed gap_detector.py from both locations
+✅ Removed clarification_generator.py from both locations
+✅ Removed ctc_generator.py from both locations
+✅ Updated api/__init__.py in both locations
+✅ No orphaned imports in remaining code
+✅ EfficiencyCalculator remains functional
+✅ App.py still communicates with AI agent
 
-## Key Implementation Decisions
+## Next Steps
 
-### 1. Multi-word Verb Handling
-Implemented special handling for multi-word verbs (e.g., "set up", "make better") to correctly extract action from phrases like "Set up alerts when...".
+The application is ready for:
+1. Deployment to production
+2. Integration with the GANDALF AI agent VM
+3. Performance monitoring and telemetry collection
+4. Scaling to handle production traffic
 
-### 2. Implicit Action Inference for Bug Reports
-When a bug report doesn't contain an explicit action verb (e.g., "The login page shows a 500 error"), the system infers "fix" as the action.
+No further cleanup of intent analysis code is needed.
 
-### 3. Context-Aware Gap Detection
-Gap detection considers the full context:
-- "Export report" → asks for format
-- "Export button does nothing" → doesn't ask for format (it's a bug)
-- "Sometimes fails on iOS" → asks for version
-- "Shows 500 error" → doesn't ask for version (specific error)
+---
 
-### 4. Clarity Heuristics
-Intent clarity determination uses multiple signals:
-- Presence of clear vs vague action verbs
-- Target object identification
-- Scope definition
-- Prompt length and structure
+**Status**: ✅ **COMPLETE - Unused intent analysis resources removed**
 
-### 5. Efficiency Calculation
-Calculated based on character count by default, with optional token-based calculation. Uses formula from GANDALF spec with proper clamping to 0-100 range.
-
-## GANDALF Rules Compliance
-
-✅ **AI-Unaware Behavior**: System doesn't expose internal reasoning
-✅ **No Internal Leakage**: Only outputs clarifications or final CTC
-✅ **Delta-Only Thinking**: Context is minimal, task-specific
-✅ **Token Efficiency**: Bullet points, checklists, no prose
-✅ **Max 3 Clarifications**: Enforced in ClarificationGenerator
-✅ **Output Bounds**: Context max 2, DoD 3-7, Constraints max 5, Deliverables max 5
-✅ **Efficiency Tracking**: Implemented with metadata
-✅ **Execution Agent Agnostic**: No Claude Code-specific assumptions
-
-## Files Created
-
-### Core Implementation
-- `api/intent_analyzer.py` (321 lines) - Intent classification
-- `api/gap_detector.py` (293 lines) - Gap detection
-- `api/clarification_generator.py` (291 lines) - Question generation
-- `api/ctc_generator.py` (495 lines) - CTC generation engine
-- `api/efficiency_calculator.py` (128 lines) - Efficiency metrics
-
-### Testing & Integration
-- `scripts/test_ctc_generation.py` (200 lines) - Comprehensive test suite
-- `api/__init__.py` - Package initialization with exports
-- `api/app.py` - Updated Flask API integration
-
-### Documentation
-- `PROJECT_MAP.md` - Updated with implementation details
-- `IMPLEMENTATION_SUMMARY.md` - This document
-
-## Performance Metrics
-
-From test execution:
-- Average processing time: ~10-50ms per intent
-- CTC generation is deterministic and repeatable
-- Memory usage: Minimal (stateless processing)
-- No external API calls required
-
-## Known Limitations & Future Enhancements
-
-### Current Limitations
-1. No persistent storage - CTCs generated on-demand only
-2. No user feedback loop for CTC quality
-3. Token-based efficiency calculation not implemented (character-based only)
-4. No A/B testing framework for different CTC styles
-
-### Recommended Enhancements
-1. Add database integration for CTC storage and retrieval
-2. Implement telemetry aggregation and analytics
-3. Add machine learning for improved intent classification
-4. Support for multi-turn clarification conversations
-5. Template library for common task patterns
-6. User feedback mechanism for CTC quality ratings
-
-## Example Usage
-
-### Clear Intent → Direct CTC
-```bash
-curl -X POST http://localhost:5000/api/intent \
-  -H "Content-Type: application/json" \
-  -d '{
-    "date": "2026-01-19T10:00:00Z",
-    "generate_for": "claude-code",
-    "user_prompt": "Add dark mode to the mobile app with a toggle in settings."
-  }'
-```
-
-**Response**: CTC with title "Add dark mode to", 4 DoD items, 1 constraint, 2 deliverables
-
-### Vague Intent → Clarification
-```bash
-curl -X POST http://localhost:5000/api/intent \
-  -H "Content-Type: application/json" \
-  -d '{
-    "date": "2026-01-19T10:00:00Z",
-    "generate_for": "claude-code",
-    "user_prompt": "Export the monthly sales report."
-  }'
-```
-
-**Response**: Clarification question asking for export format (CSV/PDF/XLSX)
-
-## Compliance with Project Standards
-
-### Code Quality
-✅ Descriptive function and variable names
-✅ Comprehensive docstrings for all modules
-✅ Type hints throughout
-✅ Clear separation of concerns (black box modules)
-✅ Junior developer can understand the code
-
-### Documentation
-✅ Comments explain WHY, not WHAT
-✅ TECHNOLOGIES.md updated
-✅ PROJECT_MAP.md updated
-✅ Implementation summary provided
-
-### Testing
-✅ Comprehensive test suite with 100% pass rate
-✅ Tests cover demo and validation examples
-✅ Edge cases considered
-
-### Security
-✅ Input validation in Flask endpoints
-✅ No SQL injection risks (no DB yet)
-✅ No XSS risks (JSON API only)
-✅ Error handling prevents information leakage
-
-## Conclusion
-
-The GANDLF CTC generation logic is fully implemented and tested. The system successfully:
-
-1. **Analyzes** user intents with high accuracy
-2. **Detects** missing information intelligently
-3. **Generates** clarification questions when needed
-4. **Produces** compliant CTCs following all GANDALF rules
-5. **Tracks** efficiency metrics for continuous improvement
-
-The implementation is modular, well-tested, and ready for integration with database storage and additional features.
-
-**Status**: ✅ **READY FOR PRODUCTION**
+*Cleanup completed: 2026-01-24*
+*Removed: 1,400+ lines of unused code*
+*Remaining codebase: Clean and maintainable*
 
 ---
 
