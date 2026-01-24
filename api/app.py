@@ -11,12 +11,13 @@ import logging
 from typing import Dict, Any
 import time
 
-# Import GANDALF modules - AI Agent based system
+# Import GANDALF modules - Multi-agent system
 import sys
 import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from gandalf_agent import AgentClient, CTCOrchestrator
+from .multi_agent_client import MultiAgentClient
+from .efficiency_calculator import EfficiencyCalculator
 
 # Configure logging
 logging.basicConfig(
@@ -28,9 +29,13 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Initialize AI Agent orchestrator
-agent_client = AgentClient()
-ctc_orchestrator = CTCOrchestrator(agent_client)
+# Initialize multi-agent client
+multi_agent_client = MultiAgentClient(
+    pipeline_endpoint=os.getenv('GANDALF_PIPELINE_ENDPOINT', 'http://localhost:8080')
+)
+
+# Initialize efficiency calculator
+efficiency_calculator = EfficiencyCalculator()
 
 # Health check endpoint
 @app.route('/health', methods=['GET'])
@@ -131,12 +136,13 @@ def submit_intent():
 
 def generate_ctc(user_prompt: str, intent_id: str, date: str, generate_for: str) -> Dict[str, Any]:
     """
-    Generate a Compiled Task Contract from user prompt using GANDALF AI Agent
+    Generate a Compiled Task Contract from user prompt using GANDALF Multi-Agent Pipeline
 
-    The AI agent running in the GANDALF VM will:
-    1. Analyze the intent
-    2. Detect information gaps
-    3. Either ask clarifying questions OR generate complete CTC
+    The multi-agent pipeline will:
+    1. Analyze the intent (lexical analysis)
+    2. Analyze semantics and detect gaps
+    3. Score coverage and generate blocking questions if needed
+    4. Generate complete CTC when ready
 
     Args:
         user_prompt: Raw user intent
@@ -147,8 +153,8 @@ def generate_ctc(user_prompt: str, intent_id: str, date: str, generate_for: str)
     Returns:
         CTC in GANDALF format OR clarification request
     """
-    # Use CTCOrchestrator which communicates with AI agent
-    result = ctc_orchestrator.process_intent(user_prompt)
+    # Use MultiAgentClient which orchestrates the 4-step pipeline
+    result = multi_agent_client.process_intent(user_prompt)
 
     # Add metadata to the result
     if result['status'] == 'ctc_generated':
@@ -270,8 +276,8 @@ def submit_clarifications():
         # Measure start time
         start_time = time.time()
 
-        # Submit clarifications to orchestrator
-        result = ctc_orchestrator.submit_clarifications(user_prompt, clarifications)
+        # Submit clarifications to multi-agent client
+        result = multi_agent_client.submit_clarifications(user_prompt, clarifications)
 
         # Calculate elapsed time
         elapsed_ms = int((time.time() - start_time) * 1000)
@@ -318,13 +324,13 @@ def submit_clarifications():
 @app.route('/api/agent/status', methods=['GET'])
 def agent_status():
     """
-    Check AI agent status and readiness
+    Check multi-agent pipeline status and readiness
 
     Returns:
         Agent status information
     """
     try:
-        status = ctc_orchestrator.get_agent_status()
+        status = multi_agent_client.get_agent_status()
         return jsonify(status), 200
     except Exception as e:
         logger.error(f"Error checking agent status: {str(e)}")

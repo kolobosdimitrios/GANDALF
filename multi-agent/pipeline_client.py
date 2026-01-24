@@ -13,7 +13,7 @@ Provides methods to execute each step of the 4-step pipeline:
 import os
 import logging
 from typing import Dict, Any, Optional
-import httpx
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -67,20 +67,19 @@ class PipelineClient:
         logger.info(f"Making request to {url}")
 
         try:
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(url, json=payload)
-                response.raise_for_status()
+            response = requests.post(url, json=payload, timeout=self.timeout)
+            response.raise_for_status()
 
-                result = response.json()
-                logger.info(f"Request successful")
+            result = response.json()
+            logger.info(f"Request successful")
 
-                return result
+            return result
 
-        except httpx.HTTPStatusError as e:
+        except requests.exceptions.HTTPError as e:
             logger.error(f"HTTP error {e.response.status_code}: {e.response.text}")
             raise Exception(f"Pipeline request failed: {e.response.status_code} {e.response.text}")
 
-        except httpx.RequestError as e:
+        except requests.exceptions.RequestException as e:
             logger.error(f"Request error: {e}")
             raise Exception(f"Pipeline request failed: {str(e)}")
 
@@ -207,10 +206,9 @@ class PipelineClient:
         logger.info(f"Checking health at {url}")
 
         try:
-            with httpx.Client(timeout=5) as client:
-                response = client.get(url)
-                response.raise_for_status()
-                return response.json()
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
+            return response.json()
 
         except Exception as e:
             logger.error(f"Health check failed: {e}")
@@ -227,10 +225,9 @@ class PipelineClient:
         logger.info(f"Getting telemetry from {url}")
 
         try:
-            with httpx.Client(timeout=5) as client:
-                response = client.get(url)
-                response.raise_for_status()
-                return response.json()
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
+            return response.json()
 
         except Exception as e:
             logger.error(f"Telemetry request failed: {e}")
