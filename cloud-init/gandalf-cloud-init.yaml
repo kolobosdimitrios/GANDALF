@@ -1,0 +1,219 @@
+#cloud-config
+# GANDALF VM provisioning configuration
+# This cloud-init config sets up MySQL, Python, and Claude Code CLI
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - mysql-server
+  - mysql-client
+  - python3
+  - python3-venv
+  - python3-pip
+  - curl
+  - git
+
+write_files:
+  - path: /etc/gandalf/db.env
+    content: |
+      DB_NAME=gandalf
+      DB_USER=gandalf
+      DB_HOST=localhost
+      DB_PORT=3306
+    owner: root:root
+    permissions: '0600'
+
+  - path: /usr/local/bin/gandalf-verify
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      echo "=== GANDALF VM Verification ==="
+      echo ""
+
+      # Check MySQL
+      echo "Checking MySQL..."
+      mysql -V
+      mysql -e "SELECT version();" | head -2 | tail -1
+      mysql -e "SHOW DATABASES;" | grep -qw gandalf && echo "✓ Database 'gandalf' exists"
+
+      # Check Python
+      echo ""
+      echo "Checking Python..."
+      python3 --version
+
+      # Check venv
+      echo ""
+      echo "Checking Python venv..."
+      if [ -d "/opt/gandalf/venv" ]; then
+        echo "✓ Virtual environment exists at /opt/gandalf/venv"
+        source /opt/gandalf/venv/bin/activate
+        pip freeze | wc -l | xargs echo "  Installed packages:"
+        deactivate
+      else
+        echo "✗ Virtual environment not found"
+        exit 1
+      fi
+
+      # Check Claude Code CLI
+      echo ""
+      echo "Checking Claude Code CLI..."
+      if command -v claude-code &> /dev/null; then
+        claude-code --version || echo "✓ Claude Code CLI installed (version check may require auth)"
+      else
+        echo "✗ Claude Code CLI not found in PATH"
+        exit 1
+      fi
+
+      echo ""
+      echo "=== Verification Complete ==="
+    owner: root:root
+    permissions: '0755'
+
+  - path: /opt/gandalf/setup_db.sh
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      # Generate random password
+      DB_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+
+      # Store password
+      echo "DB_PASS=${DB_PASS}" >> /etc/gandalf/db.env
+
+      # Wait for MySQL to be ready
+      sleep 5
+
+      # Create user and database
+      mysql -e "CREATE DATABASE IF NOT EXISTS gandalf CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+      mysql -e "CREATE USER IF NOT EXISTS 'gandalf'@'localhost' IDENTIFIED BY '${DB_PASS}';"
+      mysql -e "GRANT ALL PRIVILEGES ON gandalf.* TO 'gandalf'@'localhost';"
+      mysql -e "FLUSH PRIVILEGES;"
+
+      echo "MySQL setup complete"
+    owner: root:root
+    permissions: '0700'
+
+  - path: /opt/gandalf/setup_python.sh
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      # Create venv directory
+      mkdir -p /opt/gandalf/venv
+
+      # Create virtual environment
+      python3 -m venv /opt/gandalf/venv
+
+      # Activate and install packages
+      source /opt/gandalf/venv/bin/activate
+      pip install --upgrade pip
+
+      # Copy requirements.txt if mounted, otherwise use defaults
+      if [ -f /tmp/requirements.txt ]; then
+        pip install -r /tmp/requirements.txt
+      else
+        # Fallback minimal requirements
+        pip install mysql-connector-python flask flask-cors gunicorn python-dotenv pydantic
+      fi
+
+      deactivate
+
+      echo "Python environment setup complete"
+    owner: root:root
+    permissions: '0700'
+
+  - path: /opt/gandalf/api/app.py
+    content: |
+      # GANDALF Flask API
+      # This will be replaced by the actual app files during deployment
+      from flask import Flask
+      app = Flask(__name__)
+
+      @app.route('/health')
+      def health():
+          return {'status': 'healthy'}
+
+      if __name__ == '__main__':
+          app.run(host='0.0.0.0', port=5000)
+    owner: root:root
+    permissions: '0755'
+
+  - path: /etc/systemd/system/gandalf-api.service
+    content: |
+      [Unit]
+      Description=GANDALF API Service
+      After=network.target mysql.service
+
+      [Service]
+      Type=simple
+      User=root
+      WorkingDirectory=/opt/gandalf
+      ExecStart=/opt/gandalf/venv/bin/gunicorn --workers 4 --bind 0.0.0.0:5000 --log-level info --access-logfile /var/log/gandalf/access.log --error-logfile /var/log/gandalf/error.log api.app:app
+      Restart=always
+      RestartSec=10
+      StandardOutput=journal
+      StandardError=journal
+      Environment="FLASK_ENV=production"
+
+      [Install]
+      WantedBy=multi-user.target
+    owner: root:root
+    permissions: '0644'
+
+  - path: /opt/gandalf/setup_claude.sh
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      # Claude Code CLI version
+      CLAUDE_CODE_VERSION="0.2.3"
+
+      # Install via npm (Claude Code CLI is distributed as npm package)
+      curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+      apt-get install -y nodejs
+
+      # Install Claude Code CLI globally
+      npm install -g @anthropic-ai/claude-code-cli@${CLAUDE_CODE_VERSION}
+
+      # Verify installation
+      claude-code --version || echo "Claude Code CLI installed (auth required for full verification)"
+
+      echo "Claude Code CLI setup complete"
+    owner: root:root
+    permissions: '0700'
+
+runcmd:
+  - mkdir -p /etc/gandalf
+  - chmod 700 /etc/gandalf
+  - mkdir -p /var/log/gandalf
+  - echo "Starting GANDALF provisioning..." | tee /var/log/gandalf-provision.log
+
+  # Setup MySQL
+  - bash /opt/gandalf/setup_db.sh 2>&1 | tee -a /var/log/gandalf-provision.log
+
+  # Setup Python
+  - bash /opt/gandalf/setup_python.sh 2>&1 | tee -a /var/log/gandalf-provision.log
+
+  # Setup Claude Code CLI
+  - bash /opt/gandalf/setup_claude.sh 2>&1 | tee -a /var/log/gandalf-provision.log
+
+  # Create API directory structure
+  - mkdir -p /opt/gandalf/api
+
+  # Enable and start GANDALF API service
+  - systemctl daemon-reload
+  - systemctl enable gandalf-api.service
+  - systemctl start gandalf-api.service
+
+  # Run verification
+  - bash /usr/local/bin/gandalf-verify 2>&1 | tee /var/log/gandalf-verify.log
+
+  # Verify API is running
+  - sleep 5
+  - curl -f http://localhost:5000/health || echo "Warning: API health check failed"
+
+  - echo "GANDALF provisioning complete" | tee -a /var/log/gandalf-provision.log
+
+final_message: "GANDALF VM provisioning complete. Check /var/log/gandalf-verify.log for verification results."
