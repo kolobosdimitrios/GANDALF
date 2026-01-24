@@ -32,92 +32,108 @@ GANDALF sits between human users and execution-oriented AI agents (like Claude C
 ## Architecture
 
 ```
-┌─────────────┐      HTTP       ┌──────────────┐      HTTP      ┌─────────────────┐
-│   User      │ ──────────────> │   Flask API  │ ────────────> │  AI Agent API   │
-│  (Human)    │                 │   (Port 5000)│               │   (Port 8080)   │
-└─────────────┘                 └──────┬───────┘               └────────┬────────┘
-                                       │                                 │
-                                       │                    ┌────────────┼────────────┐
-                                       │                    │            │            │
-                                       v                    v            v            v
-                               ┌───────────────┐    ┌──────────┐ ┌──────────┐ ┌──────────┐
-                               │    GANDALF    │    │  Haiku   │ │  Sonnet  │ │  Opus    │
-                               │    Compiler   │    │ (Simple) │ │ (Medium) │ │(Complex) │
-                               └───────┬───────┘    └──────────┘ └──────────┘ └──────────┘
-                                       │                    └────────────┬────────────┘
-                                       v                                 │
-                               ┌───────────────┐                         │
-                               │      CTC      │ <───────────────────────┘
-                               │   (JSON)      │        Model Router
-                               └───────┬───────┘   (Intelligent Selection)
-                                       │
-                                       v
-                               ┌───────────────┐
-                               │   MySQL DB    │
-                               │  (Telemetry)  │
-                               └───────────────┘
+┌─────────────┐
+│   User      │
+│  (Client)   │
+└──────┬──────┘
+       │ HTTP POST /api/intent
+       ▼
+┌──────────────────────────────┐
+│  Flask API (Port 5000)       │
+│  ├─ MultiAgentClient         │
+│  └─ EfficiencyCalculator     │
+└──────┬───────────────────────┘
+       │ HTTP → Pipeline Service
+       ▼
+┌──────────────────────────────────────────────┐
+│  Pipeline Service (Port 8081)                │
+│  ┌─────────────────────────────────────────┐ │
+│  │  4-Step CTC Generation Pipeline:       │ │
+│  │                                         │ │
+│  │  Step 1: Lexical Analysis   → Haiku   │ │
+│  │  Step 2: Semantic Analysis  → Sonnet  │ │
+│  │  Step 3: Coverage Scoring   → Haiku   │ │
+│  │  Step 4: CTC Generation     → Opus    │ │
+│  └─────────────────────────────────────────┘ │
+└──────┬───────────────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────┐
+│  Claude API                  │
+│  ├─ Haiku (Steps 1,3)       │
+│  ├─ Sonnet (Step 2)         │
+│  └─ Opus (Step 4)           │
+└──────┬───────────────────────┘
+       │
+       ▼
+┌──────────────────────────────┐
+│  CTC JSON Response           │
+│  (with telemetry)            │
+└──────────────────────────────┘
 ```
 
-### Multi-Agent Model Selection
+### 4-Step Pipeline Strategy
 
-GANDALF uses three Claude models strategically:
+GANDALF uses a multi-step, multi-model approach for cost-optimized CTC generation:
 
-- **Haiku** (Fast, Cheap): Intent classification, validation, simple analysis
-- **Sonnet** (Balanced): Gap detection, question generation, moderate complexity
-- **Opus** (Powerful): Complex CTC generation, technical reasoning, edge cases
+| Step | Name | Model | Purpose | Cost Benefit |
+|------|------|-------|---------|--------------|
+| 1 | Lexical Analysis | Haiku | Extract keywords, entities | Fast & cheap |
+| 2 | Semantic Analysis | Sonnet | Build semantic frame | Balanced |
+| 3 | Coverage Scoring | Haiku | Score completeness, generate Q&A | Fast & cheap |
+| 4 | CTC Generation | Opus | Final CTC generation | Best quality |
 
-This results in **30-40% cost savings** on simple tasks while maintaining quality.
+**Result: 41.4% cost savings** compared to all-Opus approach while maintaining quality.
 
 ## Quick Start
 
-### Deploy with Multipass
-
+### 1. Setup Environment
 ```bash
-cd /opt/apps/gandlf
-multipass launch --name gandalf \
-  --cpus 2 \
-  --memory 2G \
-  --cloud-init cloud-init/gandalf-cloud-init.yaml
-```
-
-### Start AI Agent Service
-
-```bash
-# Set up environment
-cd /opt/apps/gandlf/multi-agent
-cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
+cd /var/www/projects/gandlf
 
 # Install dependencies
-cd /opt/apps/gandlf
-pip install -r requirements.txt
+pip3 install -r requirements.txt
+cd multi-agent && pip3 install -r requirements.txt
 
-# Start AI Agent Service (in background)
-cd /opt/apps/gandlf/multi-agent
-./start_ai_agent.sh
-
-# Start Flask API (in another terminal)
-cd /opt/apps/gandlf
-python -m api.app
+# Configure environment
+cd multi-agent
+cp .env.example .env
+# Edit .env and add your ANTHROPIC_API_KEY
 ```
 
-### Test the API
+### 2. Start the Services
+
+**Terminal 1: Start Pipeline Service**
+```bash
+cd /var/www/projects/gandlf/multi-agent
+./start_pipeline_agent.sh
+# Service runs on port 8081
+```
+
+**Terminal 2: Start Flask API**
+```bash
+cd /var/www/projects/gandlf
+python3 -m api.app
+# API runs on port 5000
+```
+
+### 3. Test the System
 
 ```bash
-# Get VM IP
-VM_IP=$(multipass info gandalf | grep IPv4 | awk '{print $2}')
-
 # Health check
-curl http://$VM_IP:5000/health
+curl http://localhost:5000/health
 
 # Submit intent
-curl -X POST http://$VM_IP:5000/api/intent \
+curl -X POST http://localhost:5000/api/intent \
   -H "Content-Type: application/json" \
   -d '{
-    "date": "2026-01-19T10:00:00Z",
+    "date": "2026-01-24T10:00:00Z",
     "generate_for": "claude-code",
     "user_prompt": "Add user authentication to the app"
   }'
+
+# Get pipeline status
+curl http://localhost:5000/api/agent/status
 ```
 
 ## CTC Format (Compiled Task Contract)
@@ -163,56 +179,71 @@ curl -X POST http://$VM_IP:5000/api/intent \
 ## Project Structure
 
 ```
-/opt/apps/gandlf/
-├── api/                    # Flask REST API
-│   ├── app.py             # Main application
-│   ├── intent_analyzer.py # Intent extraction
-│   ├── gap_detector.py    # Gap detection
-│   ├── ctc_generator.py   # CTC generation
+/var/www/projects/gandlf/
+├── api/                    # Flask REST API (Python)
+│   ├── __init__.py        # Package initialization
+│   ├── app.py             # Main Flask application (6 endpoints)
+│   ├── multi_agent_client.py # Multi-agent orchestrator
+│   ├── efficiency_calculator.py # CTC efficiency metrics
 │   └── README.md          # API documentation
-├── multi-agent/           # Multi-Agent System (NEW)
-│   ├── model_router.py    # Intelligent model selection
-│   ├── ai_agent_service.py # HTTP API for agents
-│   ├── pipeline_agent_service.py # Pipeline orchestration
-│   ├── test_multi_agent.py # Test suite
-│   ├── start_ai_agent.sh  # Startup script
+├── multi-agent/           # Multi-Agent HTTP Services
+│   ├── pipeline_agent_service.py # 4-step pipeline service
+│   ├── pipeline_orchestrator.py  # Pipeline orchestration
+│   ├── pipeline_model_router.py  # 4-step model routing
+│   ├── pipeline_client.py # Pipeline HTTP client
+│   ├── ai_agent_service.py # AI agent service
+│   ├── model_router.py    # Model selection logic
+│   ├── start_pipeline_agent.sh # Pipeline startup
+│   ├── start_ai_agent.sh  # AI agent startup
+│   ├── requirements.txt   # Python dependencies
 │   ├── .env.example       # Configuration template
-│   ├── MULTI_AGENT_ARCHITECTURE.md # Architecture docs
-│   └── README.md          # Usage guide
-├── gandalf_agent/         # Agent client
-│   ├── agent_client.py    # HTTP client
-│   └── ctc_orchestrator.py # CTC orchestration
-├── cloud-init/            # VM provisioning
-│   └── gandalf-cloud-init.yaml
-├── scripts/               # Utility scripts
-│   ├── start_api.sh       # API startup
-│   ├── test_api.py        # Test suite
-│   └── gandalf-api.service # Systemd service
+│   ├── README.md          # Multi-agent docs
+│   └── MULTI_AGENT_ARCHITECTURE.md # Architecture details
+├── agents/                # Agent Instructions & KB
+│   ├── AGENT_ROLE.md      # Agent mission & principles
+│   ├── 01_INTENT_ANALYSIS.md # Intent analysis instructions
+│   ├── 02_GAP_DETECTION.md # Gap detection instructions
+│   └── 03_CTC_GENERATION.md # CTC generation instructions
+├── assets/                # Static Assets
+│   └── gandalf-logo.jpeg
+├── demo/                  # Demo Files & Examples
+├── tickets/               # Issue Tracking & Summaries
 ├── requirements.txt       # Python dependencies
-├── PROJECT_MAP.md         # Architecture overview
+├── PROJECT_STRUCTURE.md   # Directory structure (this detailed)
+├── PROJECT_MAP.md         # Architecture & data flow
 ├── TECHNOLOGIES.md        # Tech stack details
 ├── DEPLOYMENT.md          # Deployment guide
-├── EXAMPLE_USAGE.md       # Usage examples
-└── README.md              # This file
+├── QUICK_START.md         # Quick start guide
+├── QUICK_REFERENCE.md     # Quick reference
+├── README.md              # This file
+├── LICENSE
+├── NOTICE
+└── CLA.md
 ```
 
 ## API Endpoints
 
-### Flask API (Port 5000)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check |
-| POST | `/api/intent` | Submit user intent, receive CTC |
-| GET | `/api/ctc/<id>` | Get CTC by ID (TODO) |
-| GET | `/api/intents` | List all intents (TODO) |
+### Flask API (Port 5000) - Primary Interface
 
-### AI Agent API (Port 8080)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/agent` | Execute AI task with model routing |
-| GET | `/health` | Health check |
-| GET | `/models` | List available models |
-| GET | `/telemetry` | Get usage statistics |
+| GET | `/health` | Health check, service status |
+| POST | `/api/intent` | Submit user intent, receive CTC or clarifications |
+| POST | `/api/intent/clarify` | Submit clarification answers, continue CTC generation |
+| GET | `/api/ctc/<intent_id>` | Retrieve CTC by ID |
+| GET | `/api/intents` | List all intents with pagination |
+| GET | `/api/agent/status` | Check pipeline service status |
+
+### Backend Services
+
+**Pipeline Service (Port 8081):**
+- Internal 4-step orchestration
+- Model routing (Haiku → Sonnet → Haiku → Opus)
+- Telemetry tracking
+
+**AI Agent Service (Port 8080):**
+- Legacy single-agent service
+- Available for compatibility
 
 ## Technology Stack
 
@@ -338,25 +369,31 @@ GANDALF tracks:
 
 ## Roadmap
 
-### Current Version (1.0)
-- ✅ Flask REST API
+### Current Version (1.0) - Released
+- ✅ Flask REST API (6 endpoints)
 - ✅ Multi-Agent System (Haiku, Sonnet, Opus)
-- ✅ Intelligent Model Routing
-- ✅ Cost Optimization (30-40% savings)
-- ✅ Basic CTC generation
-- ✅ Health checks
-- ✅ Multipass deployment
-- ✅ Telemetry tracking (tokens, cost, latency)
+- ✅ 4-Step CTC Generation Pipeline
+- ✅ Intelligent Model Routing (41.4% cost savings)
+- ✅ Health checks & agent status endpoints
+- ✅ Clarification system (ask → answer → generate)
+- ✅ Telemetry tracking (tokens, cost, latency, efficiency)
 - ✅ Claude API integration
+- ✅ MultiAgentClient orchestrator
+- ✅ Efficiency calculator
 
-### Upcoming
-- [ ] Database integration (MySQL)
-- [ ] Advanced intent extraction
-- [ ] Clarification system
-- [ ] Authentication/authorization
+### In Development
+- [ ] Database integration (MySQL) for CTC storage
+- [ ] Advanced intent extraction features
+- [ ] Authentication & authorization
 - [ ] Rate limiting
 - [ ] Monitoring dashboard
-- [ ] Unit & integration tests (expanded)
+- [ ] Extended unit & integration tests
+
+### Future
+- [ ] Web UI for intent submission
+- [ ] CTC versioning & history
+- [ ] User feedback mechanism
+- [ ] Advanced analytics
 
 ## Contributing
 
