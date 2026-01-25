@@ -87,7 +87,23 @@ GANDALF uses a multi-step, multi-model approach for cost-optimized CTC generatio
 
 ## Quick Start
 
-### 1. Setup Environment
+> **🚀 Automated Setup Available!** For production deployment, see [`setup/`](setup/) directory for automated installation scripts and cloud-init configuration.
+
+### Option 1: Automated Setup (Recommended)
+
+```bash
+# Run the automated setup script
+cd /var/www/projects/gandlf/setup
+sudo bash setup.sh "your-anthropic-api-key"
+
+# Verify installation
+bash verify_setup.sh
+```
+
+See [`setup/README.md`](setup/README.md) for detailed setup instructions, cloud-init configuration, and troubleshooting.
+
+### Option 2: Manual Setup
+
 ```bash
 cd /var/www/projects/gandlf
 
@@ -260,12 +276,19 @@ See [TECHNOLOGIES.md](TECHNOLOGIES.md) for complete list.
 
 ## Documentation
 
-- **[Multi-Agent Architecture](multi-agent/MULTI_AGENT_ARCHITECTURE.md)** - Model routing and optimization (NEW)
-- **[Multi-Agent README](multi-agent/README.md)** - Usage guide for multi-agent system (NEW)
+### 🚀 Setup & Deployment
+- **[Setup Directory](setup/)** - Automated setup scripts and cloud-init configuration (NEW)
+- **[Setup Guide](setup/SETUP_GUIDE.md)** - Comprehensive setup guide with troubleshooting (NEW)
+- **[Deployment Guide](DEPLOYMENT.md)** - Manual setup and deployment
+
+### 🏗️ Architecture & Usage
+- **[Multi-Agent Architecture](multi-agent/MULTI_AGENT_ARCHITECTURE.md)** - Model routing and optimization
+- **[Multi-Agent README](multi-agent/README.md)** - Usage guide for multi-agent system
 - **[API Documentation](api/README.md)** - Endpoint details and examples
 - **[Project Map](PROJECT_MAP.md)** - Architecture and data flow
-- **[Deployment Guide](DEPLOYMENT.md)** - Setup and deployment
 - **[Example Usage](EXAMPLE_USAGE.md)** - Usage examples and patterns
+
+### 📚 Reference
 - **[Technologies](TECHNOLOGIES.md)** - Complete tech stack
 - **[GANDALF System Prompt](../../../var/www/projects/gandlf/GANDALF.md)** - Core rules and behavior
 

@@ -18,7 +18,7 @@ write_files:
     content: |
       # Replace this with your actual Anthropic API key
       # Or pass it during cloud-init with:
-      # --cloud-init <(sed 's/ANTHROPIC_API_KEY_PLACEHOLDER/your-actual-key/' cloud-init-with-setup.yaml)
+      # --cloud-init <(sed 's/ANTHROPIC_API_KEY_PLACEHOLDER/your-actual-key/' setup/cloud-init.yaml)
       ANTHROPIC_API_KEY_PLACEHOLDER
     owner: root:root
     permissions: '0600'
@@ -36,7 +36,7 @@ runcmd:
   - export ANTHROPIC_API_KEY=$(cat /root/.gandalf_api_key)
 
   # Run the setup script
-  - cd /var/www/projects/gandlf
+  - cd /var/www/projects/gandlf/setup
   - bash setup.sh "${ANTHROPIC_API_KEY}" 2>&1 | tee /var/log/gandalf-setup.log
 
   # Clean up the API key file
