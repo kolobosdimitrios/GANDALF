@@ -1,0 +1,55 @@
+#cloud-config
+# GANDALF VM Provisioning with setup.sh
+# This cloud-init config uses the setup.sh script to configure everything
+
+package_update: true
+package_upgrade: false
+
+# Basic packages needed before setup.sh runs
+packages:
+  - curl
+  - git
+  - rsync
+
+write_files:
+  # Store the ANTHROPIC_API_KEY for setup.sh
+  # This will be replaced with actual key during VM launch
+  - path: /root/.gandalf_api_key
+    content: |
+      # Replace this with your actual Anthropic API key
+      # Or pass it during cloud-init with:
+      # --cloud-init <(sed 's/ANTHROPIC_API_KEY_PLACEHOLDER/your-actual-key/' cloud-init-with-setup.yaml)
+      ANTHROPIC_API_KEY_PLACEHOLDER
+    owner: root:root
+    permissions: '0600'
+
+runcmd:
+  # Clone or sync the GANDALF repository
+  - mkdir -p /var/www/projects
+  - mkdir -p /opt/apps
+
+  # If you're building this into an image, copy files here
+  # Otherwise, clone from git repository
+  # git clone https://github.com/your-org/gandlf.git /var/www/projects/gandlf
+
+  # Read the API key
+  - export ANTHROPIC_API_KEY=$(cat /root/.gandalf_api_key)
+
+  # Run the setup script
+  - cd /var/www/projects/gandlf
+  - bash setup.sh "${ANTHROPIC_API_KEY}" 2>&1 | tee /var/log/gandalf-setup.log
+
+  # Clean up the API key file
+  - rm -f /root/.gandalf_api_key
+
+  - echo "GANDALF provisioning complete. Check /var/log/gandalf-setup.log for details."
+
+final_message: |
+  GANDALF VM is ready to play!
+
+  Services running:
+  - Flask API: http://localhost:5000
+  - Pipeline Agent: http://localhost:8081
+
+  Check setup log: /var/log/gandalf-setup.log
+  Check service logs: journalctl -u gandalf-api.service -f
