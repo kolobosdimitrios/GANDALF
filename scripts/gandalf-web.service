@@ -1,0 +1,38 @@
+[Unit]
+Description=GANDALF Web API Service
+After=network.target mysql.service
+Documentation=file:///var/www/projects/gandlf/QUICK_REFERENCE.md
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/projects/gandlf
+Environment="PATH=/var/www/projects/gandlf/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+EnvironmentFile=-/var/www/projects/gandlf/.env
+
+# Start the Flask API using gunicorn
+ExecStart=/var/www/projects/gandlf/venv/bin/gunicorn \
+    --workers 4 \
+    --bind 0.0.0.0:7000 \
+    --timeout 120 \
+    --graceful-timeout 30 \
+    --access-logfile /var/log/gandlf/web-access.log \
+    --error-logfile /var/log/gandlf/web-error.log \
+    --log-level info \
+    api.app:app
+
+# Restart on failure
+Restart=on-failure
+RestartSec=5s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gandalf-web
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

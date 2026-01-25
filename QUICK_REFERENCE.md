@@ -1,96 +1,142 @@
-# GANDALF API - Quick Reference Card
+# GANDALF Web Project - Quick Reference Card
 
-## Deploy
+## Quick Start
+
+### Prerequisites
+- Python 3.12+
+- Dependencies installed: `pip3 install -r requirements.txt`
+- Virtual environment set up: `python3 -m venv venv`
+
+### Manual Start
 
 ```bash
-multipass launch --name gandalf \
-  --cloud-init /opt/apps/gandlf/cloud-init/gandalf-cloud-init.yaml
+# Activate environment
+source /var/www/projects/gandlf/venv/bin/activate
+
+# Run Flask directly (dev)
+python3 -m api.app
+
+# Using gunicorn (production)
+gunicorn --workers 4 --bind 0.0.0.0:7000 api.app:app
+```
+
+## Systemd Service (Production)
+
+### Setup
+
+```bash
+# Copy service file
+sudo cp /var/www/projects/gandlf/scripts/gandalf-web.service /etc/systemd/system/
+
+# Enable and start
+sudo systemctl daemon-reload
+sudo systemctl enable gandalf-web.service
+sudo systemctl start gandalf-web.service
+```
+
+### Service Management
+
+```bash
+# Status
+sudo systemctl status gandalf-web.service
+
+# Start/Stop/Restart
+sudo systemctl start gandalf-web.service
+sudo systemctl stop gandalf-web.service
+sudo systemctl restart gandalf-web.service
+
+# View logs
+sudo journalctl -u gandalf-web.service -f
+sudo journalctl -u gandalf-web.service -n 50
 ```
 
 ## Test
 
 ```bash
-# Health check
-curl http://localhost:5000/health
+# Health check (port 7000 for web project)
+curl http://localhost:7000/health
 
 # Submit intent
-curl -X POST http://localhost:5000/api/intent \
+curl -X POST http://localhost:7000/api/intent \
   -H "Content-Type: application/json" \
   -d '{
-    "date": "2026-01-19T10:00:00Z",
-    "generate_for": "claude-code",
+    "date": "2026-01-25T10:00:00Z",
+    "generate_for": "AI-AGENT",
     "user_prompt": "Add user authentication"
   }'
-```
 
-## Service Management
-
-```bash
-# Status
-sudo systemctl status gandalf-api
-
-# Start/Stop/Restart
-sudo systemctl start gandalf-api
-sudo systemctl stop gandalf-api
-sudo systemctl restart gandalf-api
-
-# Logs
-sudo journalctl -u gandalf-api -f
-sudo tail -f /var/log/gandalf/error.log
+# Check agent status
+curl http://localhost:7000/api/agent/status
 ```
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/health` | Health check |
-| POST | `/api/intent` | Submit intent, get CTC |
+| GET | `/health` | Health check - API status |
+| GET | `/api/agent/status` | AI agent connectivity check |
+| POST | `/api/intent` | Submit intent, receive CTC or clarifications |
+| POST | `/api/intent/clarify` | Submit clarification answers |
+| GET | `/api/intents` | List submitted intents |
+| GET | `/api/ctc/<id>` | Get specific CTC |
 
 ## Required Payload
 
 ```json
 {
-  "date": "ISO-8601 timestamp",
-  "generate_for": "target-ai-agent",
-  "user_prompt": "user's request"
+  "date": "2026-01-25T10:00:00Z",
+  "generate_for": "AI-AGENT",
+  "user_prompt": "Your request here"
 }
 ```
 
-## Files
+## Project Structure
 
 ```
-/opt/apps/gandlf/
-├── api/app.py              # Main Flask app
+/var/www/projects/gandlf/
+├── api/
+│   ├── app.py                      # Main Flask app
+│   ├── efficiency_calculator.py    # Metrics
+│   ├── multi_agent_client.py       # AI integration
+│   └── README.md
 ├── scripts/
-│   ├── start_api.sh        # Startup script
-│   ├── test_api.py         # Test suite
-│   └── gandalf-api.service # systemd service
-├── requirements.txt        # Dependencies
-└── README.md               # Full documentation
+│   ├── start_web.sh               # Startup script
+│   └── gandalf-web.service        # systemd service
+├── multi-agent/                   # AI agent code
+├── requirements.txt               # Dependencies
+└── QUICK_REFERENCE.md            # This file
 ```
 
 ## Troubleshooting
 
 ```bash
 # Check if running
-curl http://localhost:5000/health
+curl http://localhost:7000/health
 
-# View errors
-sudo journalctl -u gandalf-api -n 50
+# View service logs
+sudo journalctl -u gandalf-web.service -n 50
+
+# Check if port is in use
+sudo lsof -i :7000
 
 # Restart service
-sudo systemctl restart gandalf-api
+sudo systemctl restart gandalf-web.service
+
+# Check virtual environment
+ls -la /var/www/projects/gandlf/venv/bin/python3
 ```
 
 ## Documentation
 
-- Main README: `/opt/apps/gandlf/README.md`
-- API Docs: `/opt/apps/gandlf/api/README.md`
-- Deployment: `/opt/apps/gandlf/DEPLOYMENT.md`
-- Examples: `/opt/apps/gandlf/EXAMPLE_USAGE.md`
+- Full README: `/var/www/projects/gandlf/README.md`
+- API Docs: `/var/www/projects/gandlf/api/README.md`
+- Deployment: `/var/www/projects/gandlf/DEPLOYMENT.md`
+- System Services: `/opt/apps/gandlf/SYSTEMD_SETUP.md`
 
 ## Quick Links
 
-- Port: 5000
-- Logs: `/var/log/gandalf/`
-- Config: `/etc/systemd/system/gandalf-api.service`
+- **Web Service Port**: 7000
+- **App Service Port**: 5000
+- **AI Agent Port**: 8080
+- **Logs**: `/var/log/gandlf/`
+- **Service Config**: `/etc/systemd/system/gandalf-web.service`
